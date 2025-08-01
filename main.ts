@@ -42,7 +42,7 @@ async function main() {
             return await getMarketInfoWithSelectedFields(adenBaseUrl, ['mark_price', 'index_price']);
         };
 
-        const monitoringResult = await monitor.startMonitoring(getGateioData, getOrderlyData, 3); // 3시간
+        const monitoringResult = await monitor.startMonitoring(getGateioData, getOrderlyData, 3, 0.5); // 3시간, 0.5% 임계값
 
         // 모니터링 결과 출력
         // monitor.printMonitoringResult(monitoringResult);

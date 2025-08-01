@@ -45,7 +45,8 @@ export class MarketMonitor {
     async startMonitoring(
         getGateioData: () => Promise<any[]>,
         getOrderlyData: () => Promise<any[]>,
-        durationHours: number = 0.1 // 테스트용 6분
+        durationHours: number = 0.1, // 테스트용 6분
+        pauseThreshold: number = 0.5 // 가격차이율 임계값 (0.5%)
     ): Promise<MarketMonitoringResult> {
         this.isRunning = true;
         const durationMs = durationHours * 60 * 60 * 1000; // 3시간을 밀리초로
@@ -54,6 +55,7 @@ export class MarketMonitor {
         console.log(`시장 모니터링 시작: ${this.startTime.toLocaleString()}`);
         console.log(`모니터링 시간: ${durationHours}시간`);
         console.log(`실행 간격: ${intervalMs}ms`);
+        console.log(`일시중단 임계값: ${pauseThreshold}%`);
 
         const endTime = new Date(this.startTime.getTime() + durationMs);
 
@@ -63,8 +65,20 @@ export class MarketMonitor {
                 const gateioData = await getGateioData();
                 const orderlyData = await getOrderlyData();
 
-                await this.executeMonitoring(gateioData, orderlyData);
+                const shouldPause = await this.executeMonitoring(gateioData, orderlyData, pauseThreshold);
                 this.totalExecutions++;
+
+                // 가격차이율이 임계값을 넘으면 일시 중단
+                if (shouldPause) {
+                    console.log(`\n⚠️  가격차이율이 ${pauseThreshold}%를 초과했습니다!`);
+                    console.log(`모니터링을 일시 중단합니다...`);
+                    console.log(`현재 시간: ${new Date().toLocaleString()}`);
+                    console.log('---');
+
+                    // 30초 대기 후 계속
+                    await new Promise(resolve => setTimeout(resolve, 30000));
+                    console.log(`모니터링을 재개합니다...`);
+                }
 
                 // 진행 상황 출력 (1분마다)
                 if (this.totalExecutions % 60 === 0) {
@@ -105,8 +119,9 @@ export class MarketMonitor {
 
     /**
      * 단일 모니터링 실행
+     * @returns 일시중단 여부 (가격차이율이 임계값을 넘으면 true)
      */
-    private async executeMonitoring(gateioData: any[], orderlyData: any[]): Promise<void> {
+    private async executeMonitoring(gateioData: any[], orderlyData: any[], pauseThreshold: number): Promise<boolean> {
         const marketDataResult = await processMarketData(gateioData, orderlyData, 0.1);
 
         if (marketDataResult.priceComparison.length > 0) {
@@ -122,6 +137,7 @@ export class MarketMonitor {
             };
 
             this.allPriceDifferences.push(priceDifferenceData);
+
             // 최고 가격차이율 업데이트
             if (!this.highestPriceDifference ||
                 priceDifferenceData.price_difference_percent > this.highestPriceDifference.price_difference_percent) {
@@ -135,7 +151,12 @@ export class MarketMonitor {
                 console.log(`Orderly 가격: ${priceDifferenceData.orderly_price}`);
                 console.log('---');
             }
+
+            // 가격차이율이 임계값을 넘으면 일시중단 신호 반환
+            return priceDifferenceData.price_difference_percent > pauseThreshold;
         }
+
+        return false;
     }
 
     /**
