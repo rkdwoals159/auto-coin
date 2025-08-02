@@ -8,6 +8,10 @@
  * 예: ORBS_USDT -> ORBS
  */
 export function normalizeGateIOSymbol(symbol: string): string {
+    if (!symbol) {
+        console.warn('normalizeGateIOSymbol: symbol이 undefined입니다.');
+        return '';
+    }
     return symbol.replace('_USDT', '');
 }
 
@@ -16,6 +20,10 @@ export function normalizeGateIOSymbol(symbol: string): string {
  * 예: PERP_RUNE_USDC -> RUNE
  */
 export function normalizeOrderlySymbol(symbol: string): string {
+    if (!symbol) {
+        console.warn('normalizeOrderlySymbol: symbol이 undefined입니다.');
+        return '';
+    }
     return symbol.replace('PERP_', '').replace('_USDC', '');
 }
 

@@ -29,7 +29,7 @@ export function matchSymbolData(gateioData: any[], orderlyData: any[]): MatchedS
     // Gate.io 데이터를 정규화된 심볼로 매핑
     const gateioMap = new Map<string, any>();
     gateioData.forEach(item => {
-        const normalizedSymbol = normalizeGateIOSymbol(item.name);
+        const normalizedSymbol = normalizeGateIOSymbol(item.symbol || item.name);
         gateioMap.set(normalizedSymbol, item);
     });
 
