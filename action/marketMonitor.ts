@@ -138,6 +138,22 @@ export class MarketMonitor {
         if (marketDataResult.priceComparison.length > 0) {
             const highestDifference = marketDataResult.priceComparison[0]; // 이미 정렬되어 있음
 
+            // 24시간 거래금액 정보 찾기
+            const { normalizeGateIOSymbol, normalizeOrderlySymbol } = await import('./symbolNormalizer');
+
+            const gateioItem = gateioData.find(item => {
+                const normalizedSymbol = normalizeGateIOSymbol(item.symbol || item.name);
+                return normalizedSymbol === highestDifference.symbol;
+            });
+
+            const orderlyItem = orderlyData.find(item => {
+                const normalizedSymbol = normalizeOrderlySymbol(item.symbol);
+                return normalizedSymbol === highestDifference.symbol;
+            });
+
+            const gateioVolume = gateioItem ? (gateioItem as any).quote_volume || 0 : 0;
+            const orderlyVolume = orderlyItem ? orderlyItem['24h_amount'] || 0 : 0;
+
             const priceDifferenceData: HighestPriceDifferenceData = {
                 timestamp: new Date(),
                 coin: highestDifference.symbol,
@@ -160,6 +176,8 @@ export class MarketMonitor {
                 console.log(`가격차이율: ${priceDifferenceData.price_difference_percent.toFixed(4)}%`);
                 console.log(`Gate.io 가격: ${priceDifferenceData.gateio_price}`);
                 console.log(`Orderly 가격: ${priceDifferenceData.orderly_price}`);
+                console.log(`Gate.io 24시간 거래금액: ${gateioVolume.toLocaleString()} USDT`);
+                console.log(`Orderly 24시간 거래금액: ${orderlyVolume.toLocaleString()} USDT`);
                 console.log('---');
             }
 

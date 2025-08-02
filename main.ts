@@ -13,8 +13,7 @@ async function main() {
         // API 클라이언트 초기화
         const apiClient = new ApiClient();
 
-        // 모든 API 데이터 조회
-        const allData = await apiClient.getAllData();
+
 
         // 시장 모니터링 시작
         const monitor = new MarketMonitor();
@@ -22,11 +21,27 @@ async function main() {
 
         // API 호출 함수들 정의
         const getGateioData = async () => {
-            return await apiClient.getGateIOMarketData(['mark_price', 'index_price']);
+            // 공통 코인 데이터에서 Gate.io 데이터만 추출
+            const commonData = await apiClient.getCommonCoinsData(300000); // 거래량 조건 300k로 변경
+            const result = commonData.commonCoins.map(item => ({
+                name: item.symbol,
+                mark_price: item.gateio_price.toString(),
+                index_price: item.gateio_price.toString(),
+                quote_volume: item.gateio_volume // Gate.io 개별 거래량
+            }));
+            return result;
         };
 
         const getOrderlyData = async () => {
-            return await apiClient.getOrderlyMarketData(['mark_price', 'index_price']);
+            // 공통 코인 데이터에서 Orderly 데이터만 추출
+            const commonData = await apiClient.getCommonCoinsData(300000); // 거래량 조건 300k로 변경
+            const result = commonData.commonCoins.map(item => ({
+                symbol: item.symbol,
+                mark_price: item.orderly_price,
+                index_price: item.orderly_price,
+                '24h_amount': item.orderly_volume // Orderly 개별 거래량
+            }));
+            return result;
         };
 
         // Orderly 인증 정보 가져오기
@@ -44,8 +59,7 @@ async function main() {
             ORDERBOOK_MAX_LEVEL
         );
 
-        // 모니터링 결과 출력
-        // monitor.printMonitoringResult(monitoringResult);
+
 
     } catch (error) {
         console.error('에러 발생:', error);

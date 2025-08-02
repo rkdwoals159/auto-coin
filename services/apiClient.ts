@@ -1,8 +1,8 @@
-import { getMarketInfoWithSelectedFields } from '../aden/request/get/getMarketInfoForAllSymbols';
-import { getGateIOMarketInfoWithSelectedFields } from '../gateio/request/get/getMarketInfoForAllSymbols';
-import { getUSDCBalance, printUSDCBalance } from '../aden/request/get/getAssetHistory';
-import { getGateIOFuturesAccount, printUSDTBalance } from '../gateio/request/get/getAssetHistory';
 import { EnvironmentManager } from '../config/environment';
+import { getGateIOFuturesAccount, printUSDTBalance } from '../gateio/request/get/getAssetHistory';
+import { getUSDCBalance, printUSDCBalance } from '../aden/request/get/getAssetHistory';
+import { getGateIOMarketInfoWithSelectedFields, getGateIOMarketInfoWith24hAmountFilter } from '../gateio/request/get/getMarketInfoForAllSymbols';
+import { getMarketInfoWithSelectedFields } from '../aden/request/get/getMarketInfoForAllSymbols';
 
 /**
  * API 클라이언트 관리 클래스
@@ -18,17 +18,36 @@ export class ApiClient {
      * Gate.io 시장 정보 조회
      */
     async getGateIOMarketData(selectedFields: string[] = ['mark_price', 'index_price']) {
-        console.log('=== Gate.io API 호출');
         return await getGateIOMarketInfoWithSelectedFields(selectedFields);
+    }
+
+    /**
+     * Gate.io 시장 정보 조회 (24시간 거래금액 기준 필터링)
+     */
+    async getGateIOMarketDataWith24hAmountFilter(selectedFields: string[] = ['mark_price', 'index_price', 'trade_size', 'quote_volume'], minAmount: number = 300000) {
+        return await getGateIOMarketInfoWith24hAmountFilter(selectedFields, minAmount);
     }
 
     /**
      * Orderly 시장 정보 조회
      */
     async getOrderlyMarketData(selectedFields: string[] = ['mark_price', 'index_price']) {
-        console.log('=== Orderly API 호출 ===');
         const adenBaseUrl = 'https://api.orderly.org';
         return await getMarketInfoWithSelectedFields(adenBaseUrl, selectedFields);
+    }
+
+    /**
+     * Orderly 시장 정보 조회 (24시간 거래금액 기준 필터링)
+     */
+    async getOrderlyMarketDataWith24hAmountFilter(selectedFields: string[] = ['mark_price', 'index_price', '24h_amount'], minAmount: number = 300000) {
+        const adenBaseUrl = 'https://api.orderly.org';
+        const allData = await getMarketInfoWithSelectedFields(adenBaseUrl, selectedFields);
+
+        // 24시간 거래금액 기준으로 필터링
+        return allData.filter(item => {
+            const amount24h = item['24h_amount'] || 0;
+            return amount24h >= minAmount;
+        });
     }
 
     /**
@@ -105,6 +124,25 @@ export class ApiClient {
             gateIOFuturesData,
             orderlyData,
             orderlyUSDCBalance,
+        };
+    }
+
+    /**
+     * 공통 코인 필터링된 시장 데이터 조회 (24시간 거래금액 기준)
+     */
+    async getCommonCoinsData(minAmount: number = 300000) {
+        // Gate.io 데이터 조회 (24시간 거래금액 필터링 포함)
+        const gateioData = await this.getGateIOMarketDataWith24hAmountFilter(['mark_price', 'index_price', 'trade_size', 'quote_volume'], minAmount);
+
+        // Orderly 데이터 조회 (24시간 거래금액 필터링 포함)
+        const orderlyData = await this.getOrderlyMarketDataWith24hAmountFilter(['mark_price', 'index_price', '24h_amount'], minAmount);
+
+        // 공통 코인 필터링
+        const { filterCommonCoinsWithVolume } = await import('../action/commonCoinFilter');
+        const commonCoins = filterCommonCoinsWithVolume(gateioData, orderlyData, minAmount);
+
+        return {
+            commonCoins
         };
     }
 } 

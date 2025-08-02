@@ -18,6 +18,18 @@ export interface PriceInfo {
 }
 
 /**
+ * 공통 코인 데이터 타입
+ */
+export interface CommonCoinData {
+    symbol: string;
+    gateio_price: number;
+    orderly_price: number;
+    avgVolume: number;
+    gateio_volume: number;
+    orderly_volume: number;
+}
+
+/**
  * 최고 가격차이율 데이터 타입
  */
 export interface HighestPriceDifferenceData {

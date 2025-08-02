@@ -106,6 +106,16 @@ export function selectGateIOMarketInfoFields(marketInfo: GateIOMarketInfo[], sel
             }
         });
 
+        // quote_volume 필드가 요청되었고, row에 quote_volume이 있으면 추가
+        if (selectedFields.includes('quote_volume') && (row as any).quote_volume !== undefined) {
+            selected.quote_volume = (row as any).quote_volume;
+        }
+
+        // trade_size를 quote_volume으로 매핑 (거래량 데이터)
+        if (selectedFields.includes('quote_volume') && row.trade_size !== undefined) {
+            selected.quote_volume = row.trade_size;
+        }
+
         return selected;
     });
 }
@@ -154,6 +164,25 @@ export async function getGateIOSymbolInfoWithSelectedFields(symbol: string, sele
  */
 export function filterGateIOMarketInfoBySymbol(marketInfo: GateIOMarketInfo[], symbol: string): GateIOMarketInfo | undefined {
     return marketInfo.find(row => row.name === symbol);
+}
+
+/**
+ * 24시간 거래금액 기준으로 필터링된 Gate.io 시장 정보를 가져옵니다.
+ * 
+ * @param selectedFields - 선택할 필드 배열
+ * @param minAmount - 최소 거래금액 (기본값: 300000)
+ * @returns Promise<SelectedGateIOMarketInfo[]> - 필터링된 시장 정보 배열
+ */
+export async function getGateIOMarketInfoWith24hAmountFilter(selectedFields: string[], minAmount: number = 300000): Promise<SelectedGateIOMarketInfo[]> {
+    const marketInfo = await getGATEIOMarketInfoForAllSymbols();
+
+    // 24시간 거래금액 기준으로 필터링
+    const filteredData = marketInfo.filter(coin => {
+        const tradeSize = coin.trade_size || 0;
+        return tradeSize >= minAmount;
+    });
+
+    return selectGateIOMarketInfoFields(filteredData, selectedFields);
 }
 
 export default getGATEIOMarketInfoForAllSymbols;
