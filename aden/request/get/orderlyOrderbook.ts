@@ -92,8 +92,8 @@ export async function getOrderlyOrderbook(
     const headers = await createOrderlyAuthHeaders(accountId, secretKey, url);
 
     try {
-        console.log(`Orderly orderbook 조회 중: ${symbol}`);
-        console.log(`URL: ${url.toString()}`);
+        // console.log(`Orderly orderbook 조회 중: ${symbol}`);
+        // console.log(`URL: ${url.toString()}`);
 
         const response = await fetch(url.toString(), {
             method: 'GET',
@@ -115,9 +115,9 @@ export async function getOrderlyOrderbook(
         }
 
         console.log(`Orderly orderbook 조회 성공: ${symbol}`);
-        console.log(`Asks 수: ${result.data.asks.length}`);
-        console.log(`Bids 수: ${result.data.bids.length}`);
-        console.log(`타임스탬프: ${result.data.timestamp}`);
+        // console.log(`Asks 수: ${result.data.asks.length}`);
+        // console.log(`Bids 수: ${result.data.bids.length}`);
+        // console.log(`타임스탬프: ${result.data.timestamp}`);
 
         return result.data;
     } catch (error) {
@@ -131,7 +131,7 @@ export async function getOrderlyOrderbook(
  */
 export function printOrderbook(orderbook: OrderbookData, symbol: string): void {
     console.log(`\n=== ${symbol} Orderbook ===`);
-    console.log(`타임스탬프: ${orderbook.timestamp}`);
+    // console.log(`타임스탬프: ${orderbook.timestamp}`);
 
     console.log('\n--- Asks (매도) ---');
     orderbook.asks.slice(0, 10).forEach((ask, index) => {

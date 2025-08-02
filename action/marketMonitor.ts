@@ -1,35 +1,26 @@
-import { processMarketData, MarketDataResult } from './marketDataProcessor';
-import { getOrderlyOrderbook, printOrderbook } from '../aden/request/get/orderlyOrderbook';
-import getFuturesOrderBook from '../gateio/request/get/getFuturesOrderBook';
-import { HighestPriceDifferenceData, MarketMonitoringResult } from '../types/common';
-
-/**
- * Gate.io 실제 orderbook 응답 타입
- */
-interface GateIOOrderBookEntry {
-    p: string; // price
-    s: string; // size
-}
-
-interface GateIOOrderBookResponse {
-    current: number;
-    update: number;
-    asks: GateIOOrderBookEntry[];
-    bids: GateIOOrderBookEntry[];
-}
+import { MarketMonitoringResult } from '../types/common';
+import { executeAutoBuy, AutoBuyConfig } from './autoBuy';
+import { ApiClient } from '../services/apiClient';
+import { getAllPositionsInfo } from '../aden/request/get/getAllPositionsInfo';
+import { createMarketSellOrder } from '../aden/request/post/createOrder';
+import { calculateQuantityFromAmount } from './quantityUtils';
+import { PositionManager } from './positionManager';
+import { OrderbookAnalyzer } from './orderbookAnalyzer';
+import { PriceMonitor } from './priceMonitor';
 
 /**
  * 시장 데이터를 모니터링하고 최고 가격차이율을 추적
  */
 export class MarketMonitor {
-    private startTime: Date;
-    private highestPriceDifference: HighestPriceDifferenceData | null = null;
-    private allPriceDifferences: HighestPriceDifferenceData[] = [];
-    private totalExecutions: number = 0;
     private isRunning: boolean = false;
+    private positionManager: PositionManager;
+    private orderbookAnalyzer: OrderbookAnalyzer;
+    private priceMonitor: PriceMonitor;
 
     constructor() {
-        this.startTime = new Date();
+        this.positionManager = new PositionManager();
+        this.orderbookAnalyzer = new OrderbookAnalyzer();
+        this.priceMonitor = new PriceMonitor();
     }
 
     /**
@@ -44,18 +35,19 @@ export class MarketMonitor {
         orderlyApiKey?: string,
         orderlySecretKey?: Uint8Array,
         orderbookMaxLevel: number = 3,
+        percent: number = 0.2, // 포지션 비율
     ): Promise<MarketMonitoringResult> {
         this.isRunning = true;
 
-        const durationMs = durationHours * 60 * 60 * 1000; // 3시간을 밀리초로
+        const durationMs = durationHours * 60 * 60 * 1000;
         const intervalMs = 1000; // 1초
 
-        console.log(`시장 모니터링 시작: ${this.startTime.toLocaleString()}`);
+        console.log(`시장 모니터링 시작: ${this.priceMonitor.getStartTime().toLocaleString()}`);
         console.log(`모니터링 시간: ${durationHours}시간`);
         console.log(`실행 간격: ${intervalMs}ms`);
         console.log(`일시중단 임계값: ${pauseThreshold}%`);
 
-        const endTime = new Date(this.startTime.getTime() + durationMs);
+        const endTime = new Date(this.priceMonitor.getStartTime().getTime() + durationMs);
 
         while (this.isRunning && new Date() < endTime) {
             try {
@@ -63,8 +55,8 @@ export class MarketMonitor {
                 const gateioData = await getGateioData();
                 const orderlyData = await getOrderlyData();
 
-                const shouldPause = await this.executeMonitoring(gateioData, orderlyData, pauseThreshold);
-                this.totalExecutions++;
+                const shouldPause = await this.priceMonitor.executeMonitoring(gateioData, orderlyData, pauseThreshold);
+                this.priceMonitor.incrementTotalExecutions();
 
                 // 가격차이율이 임계값을 넘으면 orderbook 분석 수행
                 if (shouldPause) {
@@ -74,27 +66,41 @@ export class MarketMonitor {
                     console.log('---');
 
                     // 현재 최고 가격차이율 데이터로 orderbook 분석
-                    if (this.highestPriceDifference && orderlyAccountId && orderlyApiKey && orderlySecretKey) {
-                        await this.analyzeOrderbookForHighPriceDifference(
-                            this.highestPriceDifference,
+                    const highestDifference = this.priceMonitor.getHighestPriceDifference();
+                    if (highestDifference && orderlyAccountId && orderlyApiKey && orderlySecretKey) {
+                        await this.orderbookAnalyzer.analyzeOrderbookForHighPriceDifference(
+                            highestDifference,
                             orderlyAccountId,
                             orderlyApiKey,
                             orderlySecretKey,
                             orderbookMaxLevel
                         );
+
+                        // === 자동 매매 ===
+                        await this.executeAutoTrading(highestDifference, gateioData, orderlyAccountId, orderlySecretKey, percent);
+
+                        // === 포지션 종료 조건 체크 ===
+                        await this.positionManager.checkAndClosePositions(
+                            { accountId: orderlyAccountId, secretKey: orderlySecretKey },
+                            gateioData
+                        );
+
+                        // === 포지션 모니터링 ===
+                        await this.positionManager.monitorPositions(
+                            { accountId: orderlyAccountId, secretKey: orderlySecretKey },
+                            gateioData,
+                            endTime,
+                            this.isRunning
+                        );
                     } else {
                         console.log('❌ Orderly API 인증 정보가 없어 orderbook 분석을 건너뜁니다.');
                     }
-
-                    // 30초 대기 후 계속
-                    await new Promise(resolve => setTimeout(resolve, 30000));
-                    console.log(`모니터링을 재개합니다...`);
                 }
 
                 // 진행 상황 출력 (1분마다)
-                if (this.totalExecutions % 60 === 0) {
-                    const elapsedMinutes = Math.floor(this.totalExecutions / 60);
-                    console.log(`진행 상황: ${elapsedMinutes}분 경과, 총 실행 횟수: ${this.totalExecutions}`);
+                if (this.priceMonitor.getTotalExecutions() % 60 === 0) {
+                    const elapsedMinutes = Math.floor(this.priceMonitor.getTotalExecutions() / 60);
+                    console.log(`진행 상황: ${elapsedMinutes}분 경과, 총 실행 횟수: ${this.priceMonitor.getTotalExecutions()}`);
                 }
 
                 // 1초 대기
@@ -109,16 +115,147 @@ export class MarketMonitor {
         const finalEndTime = new Date();
 
         console.log(`모니터링 완료: ${finalEndTime.toLocaleString()}`);
-        console.log(`총 실행 횟수: ${this.totalExecutions}`);
+        console.log(`총 실행 횟수: ${this.priceMonitor.getTotalExecutions()}`);
 
         return {
-            startTime: this.startTime,
+            startTime: this.priceMonitor.getStartTime(),
             endTime: finalEndTime,
-            totalExecutions: this.totalExecutions,
-            highestPriceDifference: this.highestPriceDifference,
-            averagePriceDifference: this.calculateAveragePriceDifference(),
-            allPriceDifferences: this.allPriceDifferences
+            totalExecutions: this.priceMonitor.getTotalExecutions(),
+            highestPriceDifference: this.priceMonitor.getHighestPriceDifference(),
+            averagePriceDifference: this.priceMonitor.calculateAveragePriceDifference(),
+            allPriceDifferences: this.priceMonitor.getAllPriceDifferences()
         };
+    }
+
+    /**
+     * 자동 매매 실행
+     */
+    private async executeAutoTrading(
+        highestDifference: any,
+        gateioData: any[],
+        orderlyAccountId: string,
+        orderlySecretKey: Uint8Array,
+        percent: number
+    ): Promise<void> {
+        const coinSymbol = 'PERP_' + highestDifference.coin.replace('USDC', '') + '_USDC';
+        const apiClient = new ApiClient();
+        const envManager = require('../config/environment').EnvironmentManager.getInstance();
+        const orderlyAuth = envManager.getOrderlyAuth();
+
+        // 사용가능 금액 조회
+        const positions = await getAllPositionsInfo(orderlyAuth.accountId, orderlyAuth.secretKey, false);
+        const freeCollateral = positions.free_collateral;
+        const minAmount = 12; // 최소 12 USDC (Orderly 최소 주문 금액)
+        const maxAmount = freeCollateral; // 최대는 전액
+        const orderAmount = Math.max(Math.min(freeCollateral * percent, maxAmount), minAmount);
+
+        // clientOrderId 생성 함수
+        function makeShortClientOrderId(prefix: string, symbol: string) {
+            const coin = symbol.replace('PERP_', '').replace('_USDC', '').slice(0, 8);
+            return `${prefix}_${coin}_${Date.now()}`.slice(0, 36);
+        }
+
+        // 현재 포지션 확인
+        const checkPositions = await getAllPositionsInfo(orderlyAuth.accountId, orderlyAuth.secretKey, false);
+        const existingPosition = checkPositions?.rows.find(p => p.symbol === coinSymbol && p.position_qty !== 0);
+
+        if (highestDifference.gateio_price > highestDifference.orderly_price) {
+            // Gate.io 가격이 더 높으면 Orderly에서 매수
+            if (existingPosition) {
+                console.log(`⚠️ ${coinSymbol}에 이미 포지션이 있습니다. 매수를 건너뜁니다.`);
+                console.log(`현재 포지션: ${existingPosition.position_qty} (${existingPosition.position_qty > 0 ? '롱' : '숏'})`);
+            } else {
+                console.log(`\n[자동매매] Gate.io 가격이 더 높으므로 Orderly에서 시장가 매수 시도!`);
+                const buyConfig: AutoBuyConfig = {
+                    symbol: coinSymbol,
+                    percentage: percent,
+                    minAmount,
+                    maxAmount,
+                    clientOrderId: makeShortClientOrderId('ab', coinSymbol)
+                };
+                const buyResult = await executeAutoBuy(buyConfig);
+                if (buyResult.success) {
+                    console.log(`[자동매매] 시장가 매수 성공! 주문ID: ${buyResult.orderId}`);
+
+                    // 실제 체결가 조회를 위해 잠시 대기
+                    await new Promise(resolve => setTimeout(resolve, 2000));
+
+                    // 현재 포지션 정보 조회하여 실제 체결가 확인
+                    const currentPositions = await getAllPositionsInfo(orderlyAuth.accountId, orderlyAuth.secretKey, false);
+                    const newPosition = currentPositions?.rows.find(p => p.symbol === coinSymbol && p.position_qty > 0);
+
+                    if (newPosition) {
+                        this.positionManager.setPositionEntryPrice(
+                            coinSymbol,
+                            newPosition.average_open_price || highestDifference.orderly_price,
+                            highestDifference.gateio_price
+                        );
+                    } else {
+                        this.positionManager.setPositionEntryPrice(
+                            coinSymbol,
+                            highestDifference.orderly_price,
+                            highestDifference.gateio_price
+                        );
+                    }
+                } else {
+                    console.log(`[자동매매] 시장가 매수 실패: ${buyResult.message}`);
+                }
+            }
+        } else {
+            // Orderly 가격이 더 높으면 Orderly에서 공매도(매도)
+            if (existingPosition) {
+                console.log(`⚠️ ${coinSymbol}에 이미 포지션이 있습니다. 공매도를 건너뜁니다.`);
+                console.log(`현재 포지션: ${existingPosition.position_qty} (${existingPosition.position_qty > 0 ? '롱' : '숏'})`);
+            } else {
+                console.log(`\n[자동매매] Orderly 가격이 더 높으므로 Orderly에서 시장가 공매도(매도) 시도!`);
+                const marketInfo = await apiClient.getOrderlyMarketData(['mark_price']);
+                const symbolInfo = marketInfo.find(item => item.symbol === coinSymbol);
+                if (!symbolInfo || !symbolInfo.mark_price) {
+                    console.log('[자동매매] 현재가 조회 실패, 공매도 스킵');
+                } else {
+                    const sellQuantity = calculateQuantityFromAmount(orderAmount, symbolInfo.mark_price);
+                    try {
+                        const sellResult = await createMarketSellOrder(
+                            coinSymbol,
+                            sellQuantity,
+                            orderlyAuth.accountId,
+                            orderlyAuth.secretKey,
+                            makeShortClientOrderId('as', coinSymbol),
+                            false,
+                            false  // reduceOnly를 false로 설정
+                        );
+                        if (sellResult && sellResult.order_id) {
+                            console.log(`[자동매매] 시장가 공매도 성공! 주문ID: ${sellResult.order_id}`);
+
+                            // 실제 체결가 조회를 위해 잠시 대기
+                            await new Promise(resolve => setTimeout(resolve, 2000));
+
+                            // 현재 포지션 정보 조회하여 실제 체결가 확인
+                            const currentPositions = await getAllPositionsInfo(orderlyAuth.accountId, orderlyAuth.secretKey, false);
+                            const newPosition = currentPositions?.rows.find(p => p.symbol === coinSymbol && p.position_qty < 0);
+
+                            if (newPosition) {
+                                this.positionManager.setPositionEntryPrice(
+                                    coinSymbol,
+                                    newPosition.average_open_price || highestDifference.orderly_price,
+                                    highestDifference.gateio_price
+                                );
+                            } else {
+                                this.positionManager.setPositionEntryPrice(
+                                    coinSymbol,
+                                    highestDifference.orderly_price,
+                                    highestDifference.gateio_price
+                                );
+                            }
+                        } else {
+                            console.log('[자동매매] 시장가 공매도 실패');
+                        }
+                    } catch (e) {
+                        console.log(`[자동매매] 시장가 공매도 오류: ${e}`);
+                    }
+                }
+            }
+        }
     }
 
     /**
@@ -126,181 +263,6 @@ export class MarketMonitor {
      */
     stopMonitoring(): void {
         this.isRunning = false;
-    }
-
-    /**
-     * 단일 모니터링 실행
-     * @returns 일시중단 여부 (가격차이율이 임계값을 넘으면 true)
-     */
-    private async executeMonitoring(gateioData: any[], orderlyData: any[], pauseThreshold: number): Promise<boolean> {
-        const marketDataResult = await processMarketData(gateioData, orderlyData, 0.1);
-
-        if (marketDataResult.priceComparison.length > 0) {
-            const highestDifference = marketDataResult.priceComparison[0]; // 이미 정렬되어 있음
-
-            // 24시간 거래금액 정보 찾기
-            const { normalizeGateIOSymbol, normalizeOrderlySymbol } = await import('./symbolNormalizer');
-
-            const gateioItem = gateioData.find(item => {
-                const normalizedSymbol = normalizeGateIOSymbol(item.symbol || item.name);
-                return normalizedSymbol === highestDifference.symbol;
-            });
-
-            const orderlyItem = orderlyData.find(item => {
-                const normalizedSymbol = normalizeOrderlySymbol(item.symbol);
-                return normalizedSymbol === highestDifference.symbol;
-            });
-
-            const gateioVolume = gateioItem ? (gateioItem as any).quote_volume || 0 : 0;
-            const orderlyVolume = orderlyItem ? orderlyItem['24h_amount'] || 0 : 0;
-
-            const priceDifferenceData: HighestPriceDifferenceData = {
-                timestamp: new Date(),
-                coin: highestDifference.symbol,
-                gateio_price: highestDifference.gateio_price,
-                orderly_price: highestDifference.orderly_price,
-                price_difference: highestDifference.price_difference,
-                price_difference_percent: highestDifference.price_difference_percent
-            };
-
-            this.allPriceDifferences.push(priceDifferenceData);
-
-            // 최고 가격차이율 업데이트
-            if (!this.highestPriceDifference ||
-                priceDifferenceData.price_difference_percent > this.highestPriceDifference.price_difference_percent) {
-                this.highestPriceDifference = priceDifferenceData;
-
-                console.log(`\n새로운 최고 가격차이율 발견!`);
-                console.log(`시간: ${priceDifferenceData.timestamp.toLocaleString()}`);
-                console.log(`코인: ${priceDifferenceData.coin}`);
-                console.log(`가격차이율: ${priceDifferenceData.price_difference_percent.toFixed(4)}%`);
-                console.log(`Gate.io 가격: ${priceDifferenceData.gateio_price}`);
-                console.log(`Orderly 가격: ${priceDifferenceData.orderly_price}`);
-                console.log(`Gate.io 24시간 거래금액: ${gateioVolume.toLocaleString()} USDT`);
-                console.log(`Orderly 24시간 거래금액: ${orderlyVolume.toLocaleString()} USDT`);
-                console.log('---');
-            }
-
-            // 가격차이율이 임계값을 넘으면 일시중단 신호 반환
-            return priceDifferenceData.price_difference_percent > pauseThreshold;
-        }
-
-        return false;
-    }
-
-    /**
-     * 평균 가격차이율 계산
-     */
-    private calculateAveragePriceDifference(): number {
-        if (this.allPriceDifferences.length === 0) return 0;
-
-        const sum = this.allPriceDifferences.reduce((acc, data) => acc + data.price_difference_percent, 0);
-        return sum / this.allPriceDifferences.length;
-    }
-
-    /**
-     * 가격차이율이 높은 코인의 orderbook 조회
-     */
-    private async analyzeOrderbookForHighPriceDifference(
-        highestDifference: HighestPriceDifferenceData,
-        orderlyAccountId: string,
-        orderlyApiKey: string,
-        orderlySecretKey: Uint8Array,
-        orderbookMaxLevel: number
-    ): Promise<void> {
-        try {
-            console.log(`\n🔍 ${highestDifference.coin}의 orderbook 분석 시작...`);
-            console.log(`가격차이율: ${highestDifference.price_difference_percent.toFixed(4)}%`);
-            console.log(`Gate.io 가격: ${highestDifference.gateio_price}`);
-            console.log(`Orderly 가격: ${highestDifference.orderly_price}`);
-
-            // 코인 심볼 변환 (예: BTC -> PERP_BTC_USDT)
-            const coinSymbol = 'PERP_' + highestDifference.coin.replace('USDC', '') + '_USDC'; // Orderly는 PERP_BTC_USDC 형식 사용
-            const gateioContract = highestDifference.coin.replace('USDT', '') + '_USDT'; // Gate.io는 BTC_USDT 형식 사용
-
-            console.log(`\n📊 Gate.io ${gateioContract} orderbook 조회 중...`);
-
-            // Gate.io orderbook 조회
-            const gateioOrderbook = await getFuturesOrderBook('usdt', gateioContract, orderbookMaxLevel) as unknown as GateIOOrderBookResponse;
-
-            console.log(`✅ Gate.io orderbook 조회 성공`);
-            // console.log(`Asks 수: ${gateioOrderbook.asks.length}`);
-            // console.log(`Bids 수: ${gateioOrderbook.bids.length}`);
-            // console.log(`타임스탬프: ${gateioOrderbook.current}`);
-            // console.log(`응답 데이터 샘플:`, JSON.stringify(gateioOrderbook, null, 2));
-
-            // Gate.io orderbook 출력
-            console.log(`\n=== Gate.io ${gateioContract} Orderbook ===`);
-            console.log(`타임스탬프: ${gateioOrderbook.current}`);
-
-            console.log('\n--- Asks (매도) ---');
-            gateioOrderbook.asks.slice(0, 10).forEach((ask, index) => {
-                console.log(`${index + 1}. 가격: ${parseFloat(ask.p).toFixed(4)}, 수량: ${parseFloat(ask.s).toFixed(6)}`);
-            });
-
-            console.log('\n--- Bids (매수) ---');
-            gateioOrderbook.bids.slice(0, 10).forEach((bid, index) => {
-                console.log(`${index + 1}. 가격: ${parseFloat(bid.p).toFixed(4)}, 수량: ${parseFloat(bid.s).toFixed(6)}`);
-            });
-
-            // Gate.io 스프레드 계산
-            if (gateioOrderbook.asks.length > 0 && gateioOrderbook.bids.length > 0) {
-                const bestAsk = parseFloat(gateioOrderbook.asks[0].p);
-                const bestBid = parseFloat(gateioOrderbook.bids[0].p);
-                const spread = bestAsk - bestBid;
-                const spreadPercent = (spread / bestAsk) * 100;
-
-                console.log(`\nGate.io 스프레드: ${spread.toFixed(4)} (${spreadPercent.toFixed(4)}%)`);
-            }
-
-            console.log(`\n📊 Orderly ${coinSymbol} orderbook 조회 중...`);
-            // Orderly orderbook 조회
-            const orderlyOrderbook = await getOrderlyOrderbook(
-                coinSymbol,
-                orderlyAccountId,
-                orderlySecretKey,
-                orderbookMaxLevel,
-                false
-            );
-
-            console.log(`✅ Orderly orderbook 조회 성공`);
-            printOrderbook(orderlyOrderbook, coinSymbol);
-
-            // 거래소별 가격 비교 및 분석
-            console.log(`\n📈 거래소별 가격 분석:`);
-            console.log(`Gate.io 현재가: ${highestDifference.gateio_price}`);
-            console.log(`Orderly 현재가: ${highestDifference.orderly_price}`);
-
-            if (highestDifference.gateio_price < highestDifference.orderly_price) {
-                console.log(`\n💰 차익거래 기회 발견!`);
-                console.log(`Gate.io에서 매수 → Orderly에서 매도`);
-                console.log(`예상 수익률: ${highestDifference.price_difference_percent.toFixed(4)}%`);
-
-                // Gate.io 매수 물량 분석
-                const gateioBuyVolume = gateioOrderbook.bids.slice(0, 5).reduce((sum, bid) => sum + parseFloat(bid.s), 0);
-                console.log(`Gate.io 상위 5개 매수 물량 합계: ${gateioBuyVolume.toFixed(6)}`);
-
-                // Orderly 매도 물량 분석
-                const orderlySellVolume = orderlyOrderbook.asks.slice(0, 5).reduce((sum, ask) => sum + ask.quantity, 0);
-                console.log(`Orderly 상위 5개 매도 물량 합계: ${orderlySellVolume.toFixed(6)}`);
-
-            } else {
-                console.log(`\n💰 차익거래 기회 발견!`);
-                console.log(`Orderly에서 매수 → Gate.io에서 매도`);
-                console.log(`예상 수익률: ${highestDifference.price_difference_percent.toFixed(4)}%`);
-
-                // Orderly 매수 물량 분석
-                const orderlyBuyVolume = orderlyOrderbook.bids.slice(0, 5).reduce((sum, bid) => sum + bid.quantity, 0);
-                console.log(`Orderly 상위 5개 매수 물량 합계: ${orderlyBuyVolume.toFixed(6)}`);
-
-                // Gate.io 매도 물량 분석
-                const gateioSellVolume = gateioOrderbook.asks.slice(0, 5).reduce((sum, ask) => sum + parseFloat(ask.s), 0);
-                console.log(`Gate.io 상위 5개 매도 물량 합계: ${gateioSellVolume.toFixed(6)}`);
-            }
-
-        } catch (error: any) {
-            console.error(`❌ Orderbook 분석 중 오류:`, error.message);
-        }
     }
 
     /**

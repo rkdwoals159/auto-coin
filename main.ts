@@ -2,18 +2,19 @@ import { webcrypto } from 'node:crypto';
 import { ApiClient } from './services/apiClient';
 import { MarketMonitor } from './action/marketMonitor';
 import { EnvironmentManager } from './config/environment';
+import { getAllPositionsInfo, printPositionsInfo, monitorPositions } from './aden/request/get/getAllPositionsInfo';
 
 // this is only necessary in Node.js to make `@noble/ed25519` dependency work
 if (!globalThis.crypto) globalThis.crypto = webcrypto as any;
 
-const ORDERBOOK_MAX_LEVEL = 3;
-
+const ORDERBOOK_MAX_LEVEL = 3; // orderbook 최대 레벨
+const MIN_24_AMOUNT = 500000; // 24시간 거래금액 조건 
+const POSITON_PERCENT = 0.15; // 포지션 비율(ex : 0.2 = 현재 시드의 20%)
+const PAUSE_THRESHOLD = 0.4; // 가격차이율 임계값 (ex : 0.3 = 0.3%)
 async function main() {
     try {
         // API 클라이언트 초기화
         const apiClient = new ApiClient();
-
-
 
         // 시장 모니터링 시작
         const monitor = new MarketMonitor();
@@ -22,7 +23,7 @@ async function main() {
         // API 호출 함수들 정의
         const getGateioData = async () => {
             // 공통 코인 데이터에서 Gate.io 데이터만 추출
-            const commonData = await apiClient.getCommonCoinsData(300000); // 거래량 조건 300k로 변경
+            const commonData = await apiClient.getCommonCoinsData(MIN_24_AMOUNT); // 거래량 조건 300k로 변경
             const result = commonData.commonCoins.map(item => ({
                 name: item.symbol,
                 mark_price: item.gateio_price.toString(),
@@ -34,7 +35,7 @@ async function main() {
 
         const getOrderlyData = async () => {
             // 공통 코인 데이터에서 Orderly 데이터만 추출
-            const commonData = await apiClient.getCommonCoinsData(300000); // 거래량 조건 300k로 변경
+            const commonData = await apiClient.getCommonCoinsData(MIN_24_AMOUNT); // 거래량 조건 300k로 변경
             const result = commonData.commonCoins.map(item => ({
                 symbol: item.symbol,
                 mark_price: item.orderly_price,
@@ -52,12 +53,15 @@ async function main() {
             getGateioData,
             getOrderlyData,
             3, // 3시간
-            0.6, // 0.6% 임계값
+            PAUSE_THRESHOLD,
             orderlyAuth.accountId,
             orderlyAuth.apiKey,
             orderlyAuth.secretKey as Uint8Array,
-            ORDERBOOK_MAX_LEVEL
+            ORDERBOOK_MAX_LEVEL,
+            POSITON_PERCENT
         );
+        // 모니터링 결과 출력
+        // monitor.printMonitoringResult(monitoringResult);
 
 
 

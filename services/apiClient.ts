@@ -3,6 +3,18 @@ import { getGateIOFuturesAccount, printUSDTBalance } from '../gateio/request/get
 import { getUSDCBalance, printUSDCBalance } from '../aden/request/get/getAssetHistory';
 import { getGateIOMarketInfoWithSelectedFields, getGateIOMarketInfoWith24hAmountFilter } from '../gateio/request/get/getMarketInfoForAllSymbols';
 import { getMarketInfoWithSelectedFields } from '../aden/request/get/getMarketInfoForAllSymbols';
+import { getAllPositionsInfo, printPositionsInfo, PositionSummary } from '../aden/request/get/getAllPositionsInfo';
+import {
+    createOrder,
+    createMarketBuyOrder,
+    createMarketSellOrder,
+    createLimitBuyOrder,
+    createLimitSellOrder,
+    printOrderResponse,
+    validateOrderRequest,
+    CreateOrderRequest,
+    CreateOrderResponse
+} from '../aden/request/post/createOrder';
 
 /**
  * API 클라이언트 관리 클래스
@@ -101,6 +113,193 @@ export class ApiClient {
     }
 
     /**
+     * Orderly 포지션 정보 조회
+     */
+    async getOrderlyPositions() {
+        console.log('\n=== Orderly 포지션 정보 조회 ===');
+
+        if (!this.envManager.hasOrderlyAuth()) {
+            console.log('⚠️  Orderly API 인증 정보가 없어 포지션 조회를 건너뜁니다.');
+            return null;
+        }
+
+        try {
+            const auth = this.envManager.getOrderlyAuth();
+            const positions = await getAllPositionsInfo(auth.accountId!, auth.secretKey! as Uint8Array, false);
+
+            if (positions) {
+                printPositionsInfo(positions);
+            }
+
+            return positions;
+        } catch (error) {
+            console.error('Orderly 포지션 조회 실패:', error);
+            return null;
+        }
+    }
+
+    /**
+     * Orderly 주문 생성
+     */
+    async createOrderlyOrder(request: CreateOrderRequest) {
+        console.log('\n=== Orderly 주문 생성 ===');
+
+        if (!this.envManager.hasOrderlyAuth()) {
+            console.log('⚠️  Orderly API 인증 정보가 없어 주문 생성을 건너뜁니다.');
+            return null;
+        }
+
+        // 주문 요청 데이터 검증
+        const validation = validateOrderRequest(request);
+        if (!validation.isValid) {
+            console.error('주문 요청 데이터 검증 실패:', validation.error);
+            return null;
+        }
+
+        try {
+            const auth = this.envManager.getOrderlyAuth();
+            const orderResponse = await createOrder(request, auth.accountId!, auth.secretKey! as Uint8Array, false);
+
+            if (orderResponse) {
+                printOrderResponse(orderResponse);
+            }
+
+            return orderResponse;
+        } catch (error) {
+            console.error('Orderly 주문 생성 실패:', error);
+            return null;
+        }
+    }
+
+    /**
+     * 시장가 매수 주문 생성
+     */
+    async createMarketBuyOrder(symbol: string, quantity: number, clientOrderId?: string) {
+        if (!this.envManager.hasOrderlyAuth()) {
+            console.log('⚠️  Orderly API 인증 정보가 없습니다.');
+            return null;
+        }
+
+        try {
+            const auth = this.envManager.getOrderlyAuth();
+            const orderResponse = await createMarketBuyOrder(
+                symbol,
+                quantity,
+                auth.accountId!,
+                auth.secretKey! as Uint8Array,
+                clientOrderId,
+                false,
+                false // reduce_only = false (새로운 포지션 생성)
+            );
+
+            if (orderResponse) {
+                printOrderResponse(orderResponse);
+            }
+
+            return orderResponse;
+        } catch (error) {
+            console.error('시장가 매수 주문 생성 실패:', error);
+            return null;
+        }
+    }
+
+    /**
+     * 시장가 매도 주문 생성
+     */
+    async createMarketSellOrder(symbol: string, quantity: number, clientOrderId?: string) {
+        if (!this.envManager.hasOrderlyAuth()) {
+            console.log('⚠️  Orderly API 인증 정보가 없습니다.');
+            return null;
+        }
+
+        try {
+            const auth = this.envManager.getOrderlyAuth();
+            const orderResponse = await createMarketSellOrder(
+                symbol,
+                quantity,
+                auth.accountId!,
+                auth.secretKey! as Uint8Array,
+                clientOrderId,
+                false,
+                true // reduce_only = true (기존 포지션 줄이기)
+            );
+
+            if (orderResponse) {
+                printOrderResponse(orderResponse);
+            }
+
+            return orderResponse;
+        } catch (error) {
+            console.error('시장가 매도 주문 생성 실패:', error);
+            return null;
+        }
+    }
+
+    /**
+     * 지정가 매수 주문 생성
+     */
+    async createLimitBuyOrder(symbol: string, price: number, quantity: number, clientOrderId?: string) {
+        if (!this.envManager.hasOrderlyAuth()) {
+            console.log('⚠️  Orderly API 인증 정보가 없습니다.');
+            return null;
+        }
+
+        try {
+            const auth = this.envManager.getOrderlyAuth();
+            const orderResponse = await createLimitBuyOrder(
+                symbol,
+                price,
+                quantity,
+                auth.accountId!,
+                auth.secretKey! as Uint8Array,
+                clientOrderId,
+                false
+            );
+
+            if (orderResponse) {
+                printOrderResponse(orderResponse);
+            }
+
+            return orderResponse;
+        } catch (error) {
+            console.error('지정가 매수 주문 생성 실패:', error);
+            return null;
+        }
+    }
+
+    /**
+     * 지정가 매도 주문 생성
+     */
+    async createLimitSellOrder(symbol: string, price: number, quantity: number, clientOrderId?: string) {
+        if (!this.envManager.hasOrderlyAuth()) {
+            console.log('⚠️  Orderly API 인증 정보가 없습니다.');
+            return null;
+        }
+
+        try {
+            const auth = this.envManager.getOrderlyAuth();
+            const orderResponse = await createLimitSellOrder(
+                symbol,
+                price,
+                quantity,
+                auth.accountId!,
+                auth.secretKey! as Uint8Array,
+                clientOrderId,
+                false
+            );
+
+            if (orderResponse) {
+                printOrderResponse(orderResponse);
+            }
+
+            return orderResponse;
+        } catch (error) {
+            console.error('지정가 매도 주문 생성 실패:', error);
+            return null;
+        }
+    }
+
+    /**
      * 모든 API 데이터 조회
      */
     async getAllData() {
@@ -119,11 +318,15 @@ export class ApiClient {
         // Orderly USDC 잔고 조회
         const orderlyUSDCBalance = await this.getOrderlyUSDCBalance();
 
+        // Orderly 포지션 정보 조회
+        const orderlyPositions = await this.getOrderlyPositions();
+
         return {
             gateIOData,
             gateIOFuturesData,
             orderlyData,
             orderlyUSDCBalance,
+            orderlyPositions,
         };
     }
 
