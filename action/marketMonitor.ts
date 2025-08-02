@@ -1,6 +1,7 @@
 import { processMarketData, MarketDataResult } from './marketDataProcessor';
 import { getOrderlyOrderbook, printOrderbook } from '../aden/request/get/orderlyOrderbook';
 import getFuturesOrderBook from '../gateio/request/get/getFuturesOrderBook';
+import { HighestPriceDifferenceData, MarketMonitoringResult } from '../types/common';
 
 /**
  * Gate.io 실제 orderbook 응답 타입
@@ -15,30 +16,6 @@ interface GateIOOrderBookResponse {
     update: number;
     asks: GateIOOrderBookEntry[];
     bids: GateIOOrderBookEntry[];
-}
-
-/**
- * 최고 가격차이율 데이터 타입
- */
-export interface HighestPriceDifferenceData {
-    timestamp: Date;
-    coin: string;
-    gateio_price: number;
-    orderly_price: number;
-    price_difference: number;
-    price_difference_percent: number;
-}
-
-/**
- * 시장 모니터링 결과 타입
- */
-export interface MarketMonitoringResult {
-    startTime: Date;
-    endTime: Date;
-    totalExecutions: number;
-    highestPriceDifference: HighestPriceDifferenceData | null;
-    averagePriceDifference: number;
-    allPriceDifferences: HighestPriceDifferenceData[];
 }
 
 /**
@@ -90,29 +67,29 @@ export class MarketMonitor {
                 this.totalExecutions++;
 
                 // 가격차이율이 임계값을 넘으면 orderbook 분석 수행
-                // if (shouldPause) {
-                //     console.log(`\n⚠️  가격차이율이 ${pauseThreshold}%를 초과했습니다!`);
-                //     console.log(`모니터링을 일시 중단하고 orderbook 분석을 시작합니다...`);
-                //     console.log(`현재 시간: ${new Date().toLocaleString()}`);
-                //     console.log('---');
+                if (shouldPause) {
+                    console.log(`\n⚠️  가격차이율이 ${pauseThreshold}%를 초과했습니다!`);
+                    console.log(`모니터링을 일시 중단하고 orderbook 분석을 시작합니다...`);
+                    console.log(`현재 시간: ${new Date().toLocaleString()}`);
+                    console.log('---');
 
-                //     // 현재 최고 가격차이율 데이터로 orderbook 분석
-                //     if (this.highestPriceDifference && orderlyAccountId && orderlyApiKey && orderlySecretKey) {
-                //         await this.analyzeOrderbookForHighPriceDifference(
-                //             this.highestPriceDifference,
-                //             orderlyAccountId,
-                //             orderlyApiKey,
-                //             orderlySecretKey,
-                //             orderbookMaxLevel
-                //         );
-                //     } else {
-                //         console.log('❌ Orderly API 인증 정보가 없어 orderbook 분석을 건너뜁니다.');
-                //     }
+                    // 현재 최고 가격차이율 데이터로 orderbook 분석
+                    if (this.highestPriceDifference && orderlyAccountId && orderlyApiKey && orderlySecretKey) {
+                        await this.analyzeOrderbookForHighPriceDifference(
+                            this.highestPriceDifference,
+                            orderlyAccountId,
+                            orderlyApiKey,
+                            orderlySecretKey,
+                            orderbookMaxLevel
+                        );
+                    } else {
+                        console.log('❌ Orderly API 인증 정보가 없어 orderbook 분석을 건너뜁니다.');
+                    }
 
-                //     // 30초 대기 후 계속
-                //     await new Promise(resolve => setTimeout(resolve, 30000));
-                //     console.log(`모니터링을 재개합니다...`);
-                // }
+                    // 30초 대기 후 계속
+                    await new Promise(resolve => setTimeout(resolve, 30000));
+                    console.log(`모니터링을 재개합니다...`);
+                }
 
                 // 진행 상황 출력 (1분마다)
                 if (this.totalExecutions % 60 === 0) {

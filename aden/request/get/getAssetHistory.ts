@@ -248,10 +248,10 @@ export function printUSDCBalance(usdcHolding: CurrentHoldingData): void {
     console.log('\n=== USDC 잔고 정보 ===');
     console.log(`토큰: ${usdcHolding.token}`);
     console.log(`보유량: ${usdcHolding.holding.toFixed(6)} USDC`);
-    console.log(`동결된 금액: ${usdcHolding.frozen.toFixed(6)} USDC`);
-    console.log(`대기 중인 숏 포지션: ${usdcHolding.pending_short.toFixed(6)} USDC`);
-    console.log(`사용 가능한 잔고: ${(usdcHolding.holding - usdcHolding.frozen).toFixed(6)} USDC`);
-    console.log(`업데이트 시간: ${new Date(usdcHolding.updated_time).toLocaleString()}`);
+    // console.log(`동결된 금액: ${usdcHolding.frozen.toFixed(6)} USDC`);
+    // console.log(`대기 중인 숏 포지션: ${usdcHolding.pending_short.toFixed(6)} USDC`);
+    // console.log(`사용 가능한 잔고: ${(usdcHolding.holding - usdcHolding.frozen).toFixed(6)} USDC`);
+    // console.log(`업데이트 시간: ${new Date(usdcHolding.updated_time).toLocaleString()}`);
 }
 
 /**

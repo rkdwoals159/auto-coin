@@ -128,10 +128,10 @@ export async function getGateIOFuturesAccount(
             headers['Timestamp'] = timestamp;
             headers['SIGN'] = sign;
 
-            console.log('인증 헤더 추가됨');
-            console.log(`서명 문자열: ${signatureString}`);
-            console.log(`해시된 페이로드: ${hashedPayload}`);
-            console.log(`서명: ${sign}`);
+            // console.log('인증 헤더 추가됨');
+            // console.log(`서명 문자열: ${signatureString}`);
+            // console.log(`해시된 페이로드: ${hashedPayload}`);
+            // console.log(`서명: ${sign}`);
         } else {
             console.log('⚠️  인증 정보가 없어 공개 API만 사용합니다.');
             console.log('⚠️  Futures 계정 조회는 인증이 필요합니다.');
@@ -215,18 +215,18 @@ export function printFuturesAccount(account: GateIOFuturesAccountResponse, settl
  */
 export function printUSDTBalance(account: GateIOFuturesAccountResponse): void {
     console.log('\n=== Gate.io USDT Futures 잔고 ===');
-    console.log(`총 잔고: ${account.total} USDT`);
-    console.log(`사용 가능한 잔고: ${account.available} USDT`);
-    console.log(`미실현 손익: ${account.unrealised_pnl} USDT`);
-    console.log(`포지션 마진: ${account.position_margin} USDT`);
-    console.log(`주문 마진: ${account.order_margin} USDT`);
-    console.log(`보너스: ${account.bonus} USDT`);
+    // console.log(`총 잔고: ${account.total} USDT`);
+    // console.log(`사용 가능한 잔고: ${account.available} USDT`);
+    // console.log(`미실현 손익: ${account.unrealised_pnl} USDT`);
+    // console.log(`포지션 마진: ${account.position_margin} USDT`);
+    // console.log(`주문 마진: ${account.order_margin} USDT`);
+    // console.log(`보너스: ${account.bonus} USDT`);
 
     const totalBalance = parseFloat(account.total);
     const availableBalance = parseFloat(account.available);
     const unrealisedPnl = parseFloat(account.unrealised_pnl);
 
-    console.log(`\n=== 잔고 분석 ===`);
+    // console.log(`\n=== 잔고 분석 ===`);
     console.log(`총 잔고 (숫자): ${totalBalance.toFixed(6)} USDT`);
     console.log(`사용 가능한 잔고 (숫자): ${availableBalance.toFixed(6)} USDT`);
     console.log(`미실현 손익 (숫자): ${unrealisedPnl.toFixed(6)} USDT`);
