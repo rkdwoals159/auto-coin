@@ -300,6 +300,74 @@ export class ApiClient {
     }
 
     /**
+     * 병렬로 주문 생성 (최적화용)
+     */
+    async createParallelOrders(
+        orderlyOrder: { symbol: string; quantity: number; clientOrderId: string },
+        gateioOrder: { contract: string; size: number; settle: 'usdt' | 'btc' }
+    ) {
+        const { createGateIOMarketBuyOrder, createGateIOMarketSellOrder } = require('../gateio/request/post/createFuturesOrder');
+
+        try {
+            // Orderly와 Gate.io 주문을 병렬로 실행
+            const [orderlyResult, gateioResult] = await Promise.all([
+                this.createMarketBuyOrder(
+                    orderlyOrder.symbol,
+                    orderlyOrder.quantity,
+                    orderlyOrder.clientOrderId
+                ),
+                createGateIOMarketSellOrder(
+                    gateioOrder.contract,
+                    gateioOrder.size,
+                    gateioOrder.settle
+                )
+            ]);
+
+            return {
+                orderly: orderlyResult,
+                gateio: gateioResult,
+                success: !!(orderlyResult && gateioResult)
+            };
+        } catch (error) {
+            console.error('병렬 주문 생성 실패:', error);
+            return {
+                orderly: null,
+                gateio: null,
+                success: false,
+                error: error
+            };
+        }
+    }
+
+    /**
+     * 병렬로 포지션 정보 조회 (최적화용)
+     */
+    async getParallelPositions(orderlyAccountId: string, orderlySecretKey: Uint8Array, gateioContract: string) {
+        const { getGateIOPositionByContract } = require('../gateio/request/get/getPositions');
+
+        try {
+            const [orderlyPositions, gateioPosition] = await Promise.all([
+                getAllPositionsInfo(orderlyAccountId, orderlySecretKey, false),
+                getGateIOPositionByContract(gateioContract)
+            ]);
+
+            return {
+                orderly: orderlyPositions,
+                gateio: gateioPosition,
+                success: true
+            };
+        } catch (error) {
+            console.error('병렬 포지션 조회 실패:', error);
+            return {
+                orderly: null,
+                gateio: null,
+                success: false,
+                error: error
+            };
+        }
+    }
+
+    /**
      * 모든 API 데이터 조회
      */
     async getAllData() {
