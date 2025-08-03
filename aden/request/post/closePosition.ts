@@ -356,5 +356,7 @@ export function printClosePositionResult(result: ClosePositionResult): void {
         console.log(`클라이언트 주문 ID: ${result.clientOrderId}`);
         console.log(`종료된 수량: ${result.closedQuantity}`);
         console.log(`남은 수량: ${result.remainingQuantity}`);
+        // 수익률 계산은 별도로 처리 (현재는 기본 정보만 출력)
+        console.log(`포지션 종료 완료`);
     }
 } 

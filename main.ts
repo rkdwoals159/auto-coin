@@ -8,16 +8,17 @@ import { getAllPositionsInfo, printPositionsInfo, monitorPositions } from './ade
 if (!globalThis.crypto) globalThis.crypto = webcrypto as any;
 
 const ORDERBOOK_MAX_LEVEL = 3; // orderbook 최대 레벨
-const MIN_24_AMOUNT = 500000; // 24시간 거래금액 조건 
+const MIN_24_AMOUNT = 300000; // 24시간 거래금액 조건
 const POSITON_PERCENT = 0.15; // 포지션 비율(ex : 0.2 = 현재 시드의 20%)
-const PAUSE_THRESHOLD = 0.4; // 가격차이율 임계값 (ex : 0.3 = 0.3%)
+const PAUSE_THRESHOLD = 0.15; // 가격차이율 임계값 (0.5%)
+const DURATION_HOURS = 3; // 모니터링 시간 (3시간)
 async function main() {
     try {
         // API 클라이언트 초기화
         const apiClient = new ApiClient();
 
         // 시장 모니터링 시작
-        const monitor = new MarketMonitor();
+        const marketMonitor = new MarketMonitor();
         const envManager = EnvironmentManager.getInstance();
 
         // API 호출 함수들 정의
@@ -49,11 +50,11 @@ async function main() {
         const orderlyAuth = envManager.getOrderlyAuth();
 
         // 모니터링 시작
-        const monitoringResult = await monitor.startMonitoring(
+        const result = await marketMonitor.startMonitoring(
             getGateioData,
             getOrderlyData,
-            3, // 3시간
-            PAUSE_THRESHOLD,
+            DURATION_HOURS, // 3시간
+            PAUSE_THRESHOLD, // 0.5%
             orderlyAuth.accountId,
             orderlyAuth.apiKey,
             orderlyAuth.secretKey as Uint8Array,

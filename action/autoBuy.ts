@@ -13,6 +13,7 @@ export interface AutoBuyConfig {
     minAmount: number;        // 최소 매수 금액 (USDC)
     maxAmount: number;        // 최대 매수 금액 (USDC)
     clientOrderId?: string;   // 클라이언트 주문 ID (선택사항)
+    targetQuantity?: number;  // 지정된 수량 (선택사항)
 }
 
 /**
@@ -116,11 +117,15 @@ export async function executeAutoBuy(config: AutoBuyConfig): Promise<AutoBuyResu
         }
 
         const currentPrice = symbolInfo.mark_price;
-        const buyQuantity = calculateQuantityFromAmount(buyAmount, currentPrice);
+        // 지정된 수량이 있으면 사용, 없으면 금액으로 계산
+        const buyQuantity = config.targetQuantity || calculateQuantityFromAmount(buyAmount, currentPrice);
 
         console.log(`현재 가격: $${currentPrice.toFixed(2)}`);
         console.log(`수량 단위: ${getQuantityUnitInfo(currentPrice)}`);
         console.log(`매수 수량: ${buyQuantity.toFixed(8)}`);
+        if (config.targetQuantity) {
+            console.log(`지정된 수량 사용: ${config.targetQuantity}`);
+        }
 
         // 시장가 매수 주문 생성
         console.log('\n시장가 매수 주문 생성 중...');
