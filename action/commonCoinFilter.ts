@@ -1,4 +1,4 @@
-import { normalizeGateIOSymbol, normalizeOrderlySymbol } from './symbolNormalizer';
+import { CommonUtils } from '../utils/commonUtils';
 import { SelectedGateIOMarketInfo } from '../gateio/request/get/getMarketInfoForAllSymbols';
 import { SelectedMarketInfo } from '../aden/request/get/getMarketInfoForAllSymbols';
 import { CommonCoinData } from '../types/common';
@@ -16,52 +16,7 @@ export function filterCommonCoinsWithVolume(
     orderlyData: SelectedMarketInfo[],
     minAmount: number = 300000
 ): CommonCoinData[] {
-    // Gate.io 데이터를 정규화된 심볼로 매핑
-    const gateioMap = new Map<string, SelectedGateIOMarketInfo>();
-    gateioData.forEach(item => {
-        const normalizedSymbol = normalizeGateIOSymbol(item.name);
-        gateioMap.set(normalizedSymbol, item);
-    });
-
-    // Orderly 데이터를 정규화된 심볼로 매핑
-    const orderlyMap = new Map<string, SelectedMarketInfo>();
-    orderlyData.forEach(item => {
-        const normalizedSymbol = normalizeOrderlySymbol(item.symbol);
-        orderlyMap.set(normalizedSymbol, item);
-    });
-
-    // 공통 심볼 찾기
-    const commonSymbols = new Set([...gateioMap.keys(), ...orderlyMap.keys()]);
-
-    const commonCoins: CommonCoinData[] = [];
-
-    // 공통 심볼에 대해 거래량 조건 확인
-    for (const symbol of commonSymbols) {
-        const gateioItem = gateioMap.get(symbol);
-        const orderlyItem = orderlyMap.get(symbol);
-
-        if (gateioItem && orderlyItem) {
-            const gateioVolume = (gateioItem as any).quote_volume || 0;
-            const orderlyVolume = orderlyItem['24h_amount'] || 0;
-
-            // 두 거래소 모두에서 최소 거래량을 만족하는 경우만 포함
-            if (gateioVolume >= minAmount && orderlyVolume >= minAmount) {
-                const avgVolume = (gateioVolume + orderlyVolume) / 2;
-                commonCoins.push({
-                    symbol: symbol,
-                    gateio_price: gateioItem.mark_price,
-                    orderly_price: orderlyItem.mark_price,
-                    avgVolume: avgVolume,
-                    gateio_volume: gateioVolume,
-                    orderly_volume: orderlyVolume
-                });
-                // console.log(`✅ ${symbol} 매칭 성공! 평균 거래량: ${avgVolume.toLocaleString()}`);
-            }
-        }
-    }
-
-    // console.log(`🎯 최종 공통 코인 수: ${commonCoins.length}개`);
-    return commonCoins;
+    return CommonUtils.coinFiltering.filterCommonCoinsWithVolume(gateioData, orderlyData, minAmount);
 }
 
 /**

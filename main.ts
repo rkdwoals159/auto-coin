@@ -24,24 +24,24 @@ async function main() {
         // API 호출 함수들 정의
         const getGateioData = async () => {
             // 공통 코인 데이터에서 Gate.io 데이터만 추출
-            const commonData = await apiClient.getCommonCoinsData(MIN_24_AMOUNT); // 거래량 조건 300k로 변경
+            const commonData = await apiClient.getCommonCoinsData(MIN_24_AMOUNT);
             const result = commonData.commonCoins.map(item => ({
                 name: item.symbol,
                 mark_price: item.gateio_price.toString(),
                 index_price: item.gateio_price.toString(),
-                quote_volume: item.gateio_volume // Gate.io 개별 거래량
+                quote_volume: item.gateio_volume
             }));
             return result;
         };
 
         const getOrderlyData = async () => {
             // 공통 코인 데이터에서 Orderly 데이터만 추출
-            const commonData = await apiClient.getCommonCoinsData(MIN_24_AMOUNT); // 거래량 조건 300k로 변경
+            const commonData = await apiClient.getCommonCoinsData(MIN_24_AMOUNT);
             const result = commonData.commonCoins.map(item => ({
                 symbol: item.symbol,
                 mark_price: item.orderly_price,
                 index_price: item.orderly_price,
-                '24h_amount': item.orderly_volume // Orderly 개별 거래량
+                '24h_amount': item.orderly_volume
             }));
             return result;
         };

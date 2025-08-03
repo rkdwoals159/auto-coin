@@ -402,18 +402,8 @@ export class ApiClient {
      * 공통 코인 필터링된 시장 데이터 조회 (24시간 거래금액 기준)
      */
     async getCommonCoinsData(minAmount: number = 300000) {
-        // Gate.io 데이터 조회 (24시간 거래금액 필터링 포함)
-        const gateioData = await this.getGateIOMarketDataWith24hAmountFilter(['mark_price', 'index_price', 'trade_size', 'quote_volume'], minAmount);
-
-        // Orderly 데이터 조회 (24시간 거래금액 필터링 포함)
-        const orderlyData = await this.getOrderlyMarketDataWith24hAmountFilter(['mark_price', 'index_price', '24h_amount'], minAmount);
-
-        // 공통 코인 필터링
-        const { filterCommonCoinsWithVolume } = await import('../action/commonCoinFilter');
-        const commonCoins = filterCommonCoinsWithVolume(gateioData, orderlyData, minAmount);
-
-        return {
-            commonCoins
-        };
+        const { DataProcessingService } = await import('./dataProcessingService');
+        const dataProcessingService = new DataProcessingService();
+        return await dataProcessingService.getCommonCoinsData(minAmount);
     }
 } 

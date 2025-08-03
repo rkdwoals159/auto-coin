@@ -1,4 +1,5 @@
-import { processMarketData, MarketDataResult } from './marketDataProcessor';
+import { DataProcessingService } from '../services/dataProcessingService';
+import { CommonUtils } from '../utils/commonUtils';
 import { HighestPriceDifferenceData, MarketMonitoringResult } from '../types/common';
 
 /**
@@ -9,9 +10,11 @@ export class PriceMonitor {
     private highestPriceDifference: HighestPriceDifferenceData | null = null;
     private allPriceDifferences: HighestPriceDifferenceData[] = [];
     private totalExecutions: number = 0;
+    private dataProcessingService: DataProcessingService;
 
     constructor() {
         this.startTime = new Date();
+        this.dataProcessingService = new DataProcessingService();
     }
 
     /**
@@ -19,21 +22,19 @@ export class PriceMonitor {
      * @returns 일시중단 여부 (가격차이율이 임계값을 넘으면 true)
      */
     async executeMonitoring(gateioData: any[], orderlyData: any[], pauseThreshold: number): Promise<boolean> {
-        const marketDataResult = await processMarketData(gateioData, orderlyData, 0.1);
+        const marketDataResult = await this.dataProcessingService.processMarketData(gateioData, orderlyData, 0.1);
 
-        if (marketDataResult.priceComparison.length > 0) {
-            const highestDifference = marketDataResult.priceComparison[0]; // 이미 정렬되어 있음
+        if (marketDataResult.priceComparisons.length > 0) {
+            const highestDifference = marketDataResult.priceComparisons[0]; // 이미 정렬되어 있음
 
             // 24시간 거래금액 정보 찾기
-            const { normalizeGateIOSymbol, normalizeOrderlySymbol } = await import('./symbolNormalizer');
-
             const gateioItem = gateioData.find(item => {
-                const normalizedSymbol = normalizeGateIOSymbol(item.symbol || item.name);
+                const normalizedSymbol = CommonUtils.normalizeSymbol.gateio(item.symbol || item.name);
                 return normalizedSymbol === highestDifference.symbol;
             });
 
             const orderlyItem = orderlyData.find(item => {
-                const normalizedSymbol = normalizeOrderlySymbol(item.symbol);
+                const normalizedSymbol = CommonUtils.normalizeSymbol.orderly(item.symbol);
                 return normalizedSymbol === highestDifference.symbol;
             });
 
