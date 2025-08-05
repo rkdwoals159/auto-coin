@@ -1,5 +1,11 @@
 # Aden.io/Gate.io - 자동 차익거래 시스템
 
+<div align="center">
+
+[English](README_EN.md) | [한국어](README.md)
+
+</div>
+
 > **⚠️ 주의사항: 이 프로그램은 실제 돈으로 거래됩니다!**
 
 ## 📋 프로그램 개요
