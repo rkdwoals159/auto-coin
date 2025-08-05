@@ -71,4 +71,19 @@ export interface EnvironmentConfig {
     ORDERLY_SECRET_KEY?: string;
     GATEIO_API_KEY?: string;
     GATEIO_SECRET_KEY?: string;
+    TELEGRAM_BOT_TOKEN?: string;
+    TELEGRAM_CHAT_ID?: string;
+}
+
+/**
+ * 텔레그램 알림 타입
+ */
+export interface TelegramNotification {
+    type: 'position_entry' | 'position_exit';
+    symbol: string;
+    side: 'long' | 'short';
+    quantity: number;
+    price: number;
+    timestamp: Date;
+    message?: string;
 } 

@@ -19,6 +19,8 @@ export class EnvironmentManager {
             ORDERLY_SECRET_KEY: process.env.ORDERLY_SECRET_KEY,
             GATEIO_API_KEY: process.env.GATEIO_API_KEY,
             GATEIO_SECRET_KEY: process.env.GATEIO_SECRET_KEY,
+            TELEGRAM_BOT_TOKEN: process.env.TELEGRAM_BOT_TOKEN,
+            TELEGRAM_CHAT_ID: process.env.TELEGRAM_CHAT_ID,
         };
     }
 
@@ -73,6 +75,24 @@ export class EnvironmentManager {
     }
 
     /**
+     * 텔레그램 인증 정보 가져오기
+     */
+    public getTelegramAuth(): { botToken?: string; chatId?: string } {
+        return {
+            botToken: this.config.TELEGRAM_BOT_TOKEN,
+            chatId: this.config.TELEGRAM_CHAT_ID,
+        };
+    }
+
+    /**
+     * 텔레그램 인증 정보 확인
+     */
+    public hasTelegramAuth(): boolean {
+        const auth = this.getTelegramAuth();
+        return !!(auth.botToken && auth.chatId);
+    }
+
+    /**
      * 인증 정보 출력 (마스킹된 형태)
      */
     public printAuthInfo(): void {
@@ -94,6 +114,14 @@ export class EnvironmentManager {
             console.log(`시크릿 키: ${this.config.GATEIO_SECRET_KEY!.substring(0, 8)}...`);
         } else {
             console.log('⚠️  Gate.io API 인증 정보가 없습니다.');
+        }
+
+        if (this.hasTelegramAuth()) {
+            console.log('✅ 텔레그램 봇 인증 정보 확인 완료');
+            console.log(`봇 토큰: ${this.config.TELEGRAM_BOT_TOKEN!.substring(0, 8)}...`);
+            console.log(`채팅 ID: ${this.config.TELEGRAM_CHAT_ID}`);
+        } else {
+            console.log('⚠️  텔레그램 봇 인증 정보가 없습니다.');
         }
     }
 } 
