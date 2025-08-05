@@ -273,8 +273,7 @@ export async function autoClosePosition(
 ): Promise<ClosePositionResult> {
     try {
         console.log(`\n=== 자동 포지션 종료 ===`);
-        console.log(`심볼: ${symbol}`);
-        console.log(`종료 타입: ${closeType}`);
+        
 
         // 현재 포지션 정보 조회
         const positions = await getAllPositionsInfo(accountId, secretKey, isTestnet);
@@ -298,10 +297,7 @@ export async function autoClosePosition(
             };
         }
 
-        console.log(`현재 포지션: ${position.position_qty}`);
-        console.log(`평균 진입가: $${position.average_open_price.toFixed(2)}`);
-        console.log(`현재 가격: $${position.mark_price.toFixed(2)}`);
-        console.log(`미정산 PnL: $${position.unsettled_pnl.toFixed(2)}`);
+        
 
         // 종료 타입에 따라 실행
         if (closeType === 'MARKET') {

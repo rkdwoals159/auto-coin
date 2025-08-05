@@ -6,7 +6,8 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "build": "tsc",
     "start": "ts-node main.ts",
-    "dev": "ts-node main.ts"
+    "dev": "ts-node main.ts",
+    "test-telegram": "ts-node test-telegram.ts"
   },
   "keywords": [],
   "author": "",

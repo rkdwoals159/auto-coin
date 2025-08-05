@@ -436,16 +436,7 @@ export async function calculateOrderSizeByPercentage(
     const minOrderSize = contractInfo.order_size_min;
     const finalPositionUnits = Math.max(positionUnits, minOrderSize);
 
-    console.log(`📊 ${contract} 주문 수량 계산:`);
-    console.log(`- 사용 가능한 금액: $${availableAmount}`);
-    console.log(`- 사용할 퍼센트: ${percentage}%`);
-    console.log(`- 사용할 금액: $${useAmount}`);
-    console.log(`- 현재 가격: $${currentPrice}`);
-    console.log(`- 구매 가능한 코인 수량: ${coinQuantity}`);
-    console.log(`- 포지션 단위 배수: ${quantoMultiplier}`);
-    console.log(`- 계산된 포지션 단위: ${positionUnits}`);
-    console.log(`- 최소 주문 크기: ${minOrderSize}`);
-    console.log(`- 최종 주문 포지션 단위: ${finalPositionUnits}`);
+
     console.log(`- 실제 구매할 코인 수량: ${finalPositionUnits * quantoMultiplier}`);
 
     return finalPositionUnits;
