@@ -9,10 +9,16 @@
     "dev": "ts-node main.ts",
     "test-telegram": "ts-node test-telegram.ts"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "description": "",
+  "keywords": [
+    "arbitrage",
+    "trading",
+    "cryptocurrency",
+    "orderly",
+    "gateio"
+  ],
+  "author": "Aden",
+  "license": "MIT",
+  "description": "Automated arbitrage trading system between Orderly and Gate.io exchanges",
   "dependencies": {
     "@noble/ed25519": "^2.3.0",
     "bs58": "^5.0.0",
