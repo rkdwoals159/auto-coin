@@ -467,26 +467,7 @@ export class PositionManager {
             const netProfit = totalProfit - totalFee;
             const netProfitPercent = (netProfit / totalInvestment) * 100;
 
-            // console.log(`\n💵 거래소별 수익 분석:`);
-            // console.log(`  - 거래 수량: ${positionQuantity.toFixed(6)}`);
-            // console.log(`  - 총 투자 금액: $${totalInvestment.toFixed(6)}`);
-            // console.log(`\n📊 Orderly 거래소:`);
-            // console.log(`  - 진입가: $${entryOrderlyPrice.toFixed(6)}`);
-            // console.log(`  - 종료가: $${currentOrderlyPrice.toFixed(6)}`);
-            // console.log(`  - 수익/손실: $${orderlyProfit.toFixed(6)}`);
-            // console.log(`  - 수수료: $${orderlyFee.toFixed(6)}`);
-            // console.log(`\n📊 Gate.io 거래소:`);
-            // console.log(`  - 진입가: $${entryGateioPrice.toFixed(6)}`);
-            // console.log(`  - 종료가: $${currentGateioPrice.toFixed(6)}`);
-            // console.log(`  - 수익/손실: $${gateioProfit.toFixed(6)}`);
-            // console.log(`  - 수수료: $${gateioFee.toFixed(6)}`);
 
-            // console.log(`\n💰 최종 수익 분석:`);
-            // console.log(`  - 총 수익/손실: $${totalProfit.toFixed(6)}`);
-            // console.log(`  - 총 수수료: $${totalFee.toFixed(6)}`);
-            // console.log(`  - 순 수익/손실: $${netProfit.toFixed(6)}`);
-            // console.log(`  - 총 수익률: ${totalProfitPercent.toFixed(4)}%`);
-            // console.log(`  - 순 수익률: ${netProfitPercent.toFixed(4)}%`);
 
             // 결과 표시
             if (netProfit > 0) {

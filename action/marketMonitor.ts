@@ -78,10 +78,7 @@ export class MarketMonitor {
 
         const durationMs = durationHours * 60 * 60 * 1000;
         const intervalMs = 500; // 500ms로 단축 (기존 1초에서 50% 단축)
-        // const MIN_PROFIT_THRESHOLD = 0.3; // 수수료를 고려한 최소 수익률 (0.3%)
-
         Logger.logMonitoringStart(this.priceMonitor.getStartTime(), durationHours, intervalMs, pauseThreshold);
-        // console.log(`최소 수익률 임계값: ${MIN_PROFIT_THRESHOLD}% (수수료 고려)`);
 
         const endTime = new Date(this.priceMonitor.getStartTime().getTime() + durationMs);
 

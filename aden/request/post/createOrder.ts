@@ -133,9 +133,7 @@ export async function createOrder(
             throw new Error('API 응답이 성공하지 않았습니다.');
         }
 
-        // console.log('주문 생성 성공');
-        // console.log(`주문 ID: ${result.data.order_id}`);
-        // console.log(`클라이언트 주문 ID: ${result.data.client_order_id}`);
+
 
         return result.data;
     } catch (error) {

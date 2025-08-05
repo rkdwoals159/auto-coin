@@ -74,7 +74,7 @@ export async function getAllPositionsInfo(
 
     try {
         console.log('Orderly 포지션 정보 조회 중...');
-        // console.log(`URL: ${url.toString()}`);
+
 
         const response = await fetch(url.toString(), {
             method: 'GET',
@@ -95,7 +95,7 @@ export async function getAllPositionsInfo(
             throw new Error('API 응답이 성공하지 않았습니다.');
         }
 
-        // console.log('포지션 정보 조회 성공');
+
         return result.data;
     } catch (error) {
         console.error('포지션 정보 조회 실패:', error);
