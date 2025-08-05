@@ -1,18 +1,12 @@
 import { getAllPositionsInfo } from '../aden/request/get/getAllPositionsInfo';
 import { autoClosePosition, printClosePositionResult } from '../aden/request/post/closePosition';
 import { createGateIOPositionCloseOrder } from '../gateio/request/post/createFuturesOrder';
-import { getGateIOPositionByContract, getGateIOPositions } from '../gateio/request/get/getPositions';
+import { getGateIOPositions } from '../gateio/request/get/getPositions';
 import { ApiClient } from '../services/apiClient';
 import { EnvironmentManager } from '../config/environment';
 import { createOrderlyAuthHeaders } from '../aden/request/get/orderlyOrderbook';
-
-/**
- * 포지션 진입 시점 가격 정보
- */
-export interface PositionEntryPrice {
-    orderlyPrice: number;
-    gateioPrice: number;
-}
+import { TelegramService, PositionEntryPrice } from '../services/telegramService';
+import { getUSDCBalance } from '../aden/request/get/getAssetHistory';
 
 /**
  * 포지션 관리자 클래스
@@ -21,18 +15,23 @@ export class PositionManager {
     private positionEntryPriceDifferences: Map<string, PositionEntryPrice> = new Map();
     private apiClient: ApiClient;
     private envManager: EnvironmentManager;
+    private telegramService: TelegramService;
 
     constructor() {
         this.apiClient = new ApiClient();
         this.envManager = EnvironmentManager.getInstance();
+        this.telegramService = TelegramService.getInstance();
     }
 
     /**
      * 포지션 진입 가격 정보 저장
      */
-    setPositionEntryPrice(symbol: string, orderlyPrice: number, gateioPrice: number): void {
+    setPositionEntryPrice(symbol: string, orderlyPrice: number, gateioPrice: number, quantity: number = 1): void {
         this.positionEntryPriceDifferences.set(symbol, { orderlyPrice, gateioPrice });
         console.log(`📝 ${symbol} 포지션 진입 가격 저장: Orderly ${orderlyPrice}, Gate.io ${gateioPrice}`);
+
+        // 텔레그램 알림 전송
+        this.telegramService.sendPositionEntryNotificationWithDetails(symbol, orderlyPrice, gateioPrice, quantity);
     }
 
     /**
@@ -78,161 +77,45 @@ export class PositionManager {
     }
 
     /**
-     * 포지션 종료 조건 확인 및 실행 (임시: 5초 후 자동 종료)
+     * 포지션 종료 조건 확인 및 실행 (가격차이율 기준)
      */
     async checkAndClosePositions(
         orderlyAuth: { accountId: string; secretKey: Uint8Array },
-        gateioData: any[]
+        gateioData: any[],
+        targetProfitPercent: number = 0.05
     ): Promise<void> {
-        console.log('\n=== 포지션 종료 조건 체크 (임시: 5초 후 자동 종료) ===');
+        console.log('\n=== 포지션 종료 조건 체크 (가격차이율 기준) ===');
 
-        // 5초 대기
-        console.log('5초 후 자동 포지션 종료...');
-        await new Promise(resolve => setTimeout(resolve, 5000));
-
-        // Orderly 포지션 종료
+        // Orderly 포지션 종료 조건 확인
         const currentPositions = await getAllPositionsInfo(orderlyAuth.accountId, orderlyAuth.secretKey, false);
         if (currentPositions && currentPositions.rows.length > 0) {
             for (const position of currentPositions.rows) {
                 if (position.position_qty === 0) continue;
 
-                console.log(`\n⚠️ 자동 포지션 종료: ${position.symbol}`);
-                console.log(`수량: ${position.position_qty}`);
-
-                // 진입 가격 정보 가져오기
                 const entryPrice = this.getPositionEntryPrice(position.symbol);
                 if (entryPrice) {
-                    // 현재 가격 조회
-                    const marketInfo = await this.apiClient.getOrderlyMarketData(['mark_price']);
-                    const symbolInfo = marketInfo.find(item => item.symbol === position.symbol);
-                    const currentOrderlyPrice = symbolInfo ? symbolInfo.mark_price : 0;
-                    const currentGateioPrice = await this.getCurrentGateioPrice(position.symbol);
-
-                    if (currentOrderlyPrice && currentGateioPrice) {
-                        const positionQuantity = Math.abs(position.position_qty);
-
-                        const closeResult = await autoClosePosition(
-                            position.symbol,
-                            orderlyAuth.accountId,
-                            orderlyAuth.secretKey,
-                            'MARKET',
-                            false
-                        );
-
-                        printClosePositionResult(closeResult);
-
-                        // 수익률 계산 및 출력
-                        if (closeResult.success) {
-                            // 실제 종료 체결가 조회
-                            const actualOrderlyClosePrice = closeResult.orderId ? await this.getOrderlyOrderClosePrice(closeResult.orderId.toString()) : null;
-                            const actualGateioClosePrice = await this.getGateIOPositionClosePrice(position.symbol);
-
-                            await this.calculateAndPrintProfitLoss(
-                                position.symbol,
-                                entryPrice.orderlyPrice,
-                                entryPrice.gateioPrice,
-                                actualOrderlyClosePrice || currentOrderlyPrice,
-                                actualGateioClosePrice || currentGateioPrice,
-                                positionQuantity,
-                                closeResult
-                            );
-                        }
-                    }
-                } else {
-                    // 진입 가격 정보가 없는 경우 기본 종료
-                    const closeResult = await autoClosePosition(
-                        position.symbol,
-                        orderlyAuth.accountId,
-                        orderlyAuth.secretKey,
-                        'MARKET',
-                        false
-                    );
-
-                    printClosePositionResult(closeResult);
+                    await this.checkPositionForClose(position, entryPrice, gateioData, orderlyAuth, targetProfitPercent);
                 }
-
-                this.removePositionEntryPrice(position.symbol);
             }
         }
 
-        // Gate.io 포지션 종료
+        // Gate.io 포지션 종료 조건 확인
         try {
-            // 모든 Gate.io 포지션 조회
             const allGateioPositions = await getGateIOPositions('usdt');
             if (allGateioPositions && allGateioPositions.length > 0) {
                 for (const gateioPosition of allGateioPositions) {
                     if (parseFloat(gateioPosition.size) !== 0) {
-                        console.log(`\n⚠️ Gate.io 자동 포지션 종료: ${gateioPosition.contract}`);
-                        console.log(`수량: ${gateioPosition.size}`);
-
-                        // Orderly 심볼로 변환하여 진입 가격 정보 찾기
                         const orderlySymbol = 'PERP_' + gateioPosition.contract.replace('_USDT', '') + '_USDC';
                         const entryPrice = this.getPositionEntryPrice(orderlySymbol);
 
                         if (entryPrice) {
-                            // 현재 가격 조회
-                            const currentGateioPrice = await this.getCurrentGateioPrice(gateioPosition.contract);
-                            const currentOrderlyPrice = await this.getCurrentOrderlyPrice(orderlySymbol);
-
-                            if (currentOrderlyPrice && currentGateioPrice) {
-                                const positionQuantity = Math.abs(parseFloat(gateioPosition.size));
-
-                                const closeResult = await createGateIOPositionCloseOrder(
-                                    gateioPosition.contract,
-                                    parseFloat(gateioPosition.size),
-                                    'usdt'
-                                );
-
-                                if (closeResult && closeResult.id) {
-                                    console.log(`✅ Gate.io 포지션 종료 성공! 주문ID: ${closeResult.id}`);
-                                    console.log(`체결 가격: ${closeResult.fill_price}`);
-
-                                    // 실제 체결가 조회
-                                    let actualOrderlyClosePrice = currentOrderlyPrice;
-                                    let actualGateioClosePrice = currentGateioPrice;
-
-                                    // Gate.io 실제 체결가 조회
-                                    const gateioClosePrice = await this.getGateIOPositionClosePrice(gateioPosition.contract);
-                                    if (gateioClosePrice) {
-                                        actualGateioClosePrice = gateioClosePrice;
-                                    }
-
-                                    // 수익률 계산 및 출력
-                                    await this.calculateAndPrintProfitLoss(
-                                        gateioPosition.contract,
-                                        entryPrice.orderlyPrice,
-                                        entryPrice.gateioPrice,
-                                        actualOrderlyClosePrice,
-                                        actualGateioClosePrice,
-                                        positionQuantity,
-                                        closeResult
-                                    );
-                                } else {
-                                    console.log(`❌ Gate.io 포지션 종료 실패`);
-                                }
-                            }
-                        } else {
-                            // 진입 가격 정보가 없는 경우 기본 종료
-                            const closeResult = await createGateIOPositionCloseOrder(
-                                gateioPosition.contract,
-                                parseFloat(gateioPosition.size),
-                                'usdt'
-                            );
-
-                            if (closeResult && closeResult.id) {
-                                console.log(`✅ Gate.io 포지션 종료 성공! 주문ID: ${closeResult.id}`);
-                                console.log(`체결 가격: ${closeResult.fill_price}`);
-                            } else {
-                                console.log(`❌ Gate.io 포지션 종료 실패`);
-                            }
+                            await this.checkGateIOPositionForClose(gateioPosition, entryPrice, gateioData);
                         }
                     }
                 }
-            } else {
-                console.log('Gate.io 포지션이 없습니다.');
             }
         } catch (error) {
-            console.log(`Gate.io 포지션 종료 오류: ${error}`);
+            console.error('Gate.io 포지션 종료 조건 확인 중 오류:', error);
         }
     }
 
@@ -243,7 +126,8 @@ export class PositionManager {
         position: any,
         entryPrice: PositionEntryPrice,
         gateioData: any[],
-        orderlyAuth: { accountId: string; secretKey: Uint8Array }
+        orderlyAuth: { accountId: string; secretKey: Uint8Array },
+        targetProfitPercent: number = 0.05
     ): Promise<void> {
         const marketInfo = await this.apiClient.getOrderlyMarketData(['mark_price']);
         const symbolInfo = marketInfo.find(item => item.symbol === position.symbol);
@@ -256,14 +140,16 @@ export class PositionManager {
                 console.log(`${position.symbol}: 현재 Orderly ${currentOrderlyPrice}, Gate.io ${currentGateioPrice}, 가격차이율 : ${((currentOrderlyPrice - currentGateioPrice) / currentGateioPrice * 100).toFixed(4)}%`);
                 console.log(`${position.symbol}: 진입 시 Orderly ${entryPrice.orderlyPrice}, Gate.io ${entryPrice.gateioPrice}, 가격차이율 : ${((entryPrice.orderlyPrice - entryPrice.gateioPrice) / entryPrice.gateioPrice * 100).toFixed(4)}%`);
 
-                // 가격차이율 반전 확인
-                const entryOrderlyHigher = entryPrice.orderlyPrice > entryPrice.gateioPrice;
-                const currentOrderlyHigher = currentOrderlyPrice > currentGateioPrice;
+                // 목표 수익률 달성 확인
+                const entryPriceDiff = Math.abs(entryPrice.orderlyPrice - entryPrice.gateioPrice) / entryPrice.gateioPrice * 100;
+                const currentPriceDiff = Math.abs(currentOrderlyPrice - currentGateioPrice) / currentGateioPrice * 100;
+                const profitAchieved = entryPriceDiff - currentPriceDiff >= targetProfitPercent;
 
-                if (entryOrderlyHigher !== currentOrderlyHigher) {
-                    console.log(`\n⚠️ 가격차이율 반전! ${position.symbol} 포지션 종료`);
-                    console.log(`진입 시: Orderly ${entryOrderlyHigher ? '높음' : '낮음'}`);
-                    console.log(`현재: Orderly ${currentOrderlyHigher ? '높음' : '낮음'}`);
+                if (profitAchieved) {
+                    console.log(`\n💰 목표 수익률 달성! ${position.symbol} 포지션 종료`);
+                    console.log(`진입 시 가격차이율: ${entryPriceDiff.toFixed(4)}%`);
+                    console.log(`현재 가격차이율: ${currentPriceDiff.toFixed(4)}%`);
+                    console.log(`달성한 수익률: ${(entryPriceDiff - currentPriceDiff).toFixed(4)}% (목표: ${targetProfitPercent}%)`);
                     console.log(`수량: ${position.position_qty}`);
 
                     // 진입 시 정보 저장
@@ -581,26 +467,26 @@ export class PositionManager {
             const netProfit = totalProfit - totalFee;
             const netProfitPercent = (netProfit / totalInvestment) * 100;
 
-            console.log(`\n💵 거래소별 수익 분석:`);
-            console.log(`  - 거래 수량: ${positionQuantity.toFixed(6)}`);
-            console.log(`  - 총 투자 금액: $${totalInvestment.toFixed(6)}`);
-            console.log(`\n📊 Orderly 거래소:`);
-            console.log(`  - 진입가: $${entryOrderlyPrice.toFixed(6)}`);
-            console.log(`  - 종료가: $${currentOrderlyPrice.toFixed(6)}`);
-            console.log(`  - 수익/손실: $${orderlyProfit.toFixed(6)}`);
-            console.log(`  - 수수료: $${orderlyFee.toFixed(6)}`);
-            console.log(`\n📊 Gate.io 거래소:`);
-            console.log(`  - 진입가: $${entryGateioPrice.toFixed(6)}`);
-            console.log(`  - 종료가: $${currentGateioPrice.toFixed(6)}`);
-            console.log(`  - 수익/손실: $${gateioProfit.toFixed(6)}`);
-            console.log(`  - 수수료: $${gateioFee.toFixed(6)}`);
+            // console.log(`\n💵 거래소별 수익 분석:`);
+            // console.log(`  - 거래 수량: ${positionQuantity.toFixed(6)}`);
+            // console.log(`  - 총 투자 금액: $${totalInvestment.toFixed(6)}`);
+            // console.log(`\n📊 Orderly 거래소:`);
+            // console.log(`  - 진입가: $${entryOrderlyPrice.toFixed(6)}`);
+            // console.log(`  - 종료가: $${currentOrderlyPrice.toFixed(6)}`);
+            // console.log(`  - 수익/손실: $${orderlyProfit.toFixed(6)}`);
+            // console.log(`  - 수수료: $${orderlyFee.toFixed(6)}`);
+            // console.log(`\n📊 Gate.io 거래소:`);
+            // console.log(`  - 진입가: $${entryGateioPrice.toFixed(6)}`);
+            // console.log(`  - 종료가: $${currentGateioPrice.toFixed(6)}`);
+            // console.log(`  - 수익/손실: $${gateioProfit.toFixed(6)}`);
+            // console.log(`  - 수수료: $${gateioFee.toFixed(6)}`);
 
-            console.log(`\n💰 최종 수익 분석:`);
-            console.log(`  - 총 수익/손실: $${totalProfit.toFixed(6)}`);
-            console.log(`  - 총 수수료: $${totalFee.toFixed(6)}`);
-            console.log(`  - 순 수익/손실: $${netProfit.toFixed(6)}`);
-            console.log(`  - 총 수익률: ${totalProfitPercent.toFixed(4)}%`);
-            console.log(`  - 순 수익률: ${netProfitPercent.toFixed(4)}%`);
+            // console.log(`\n💰 최종 수익 분석:`);
+            // console.log(`  - 총 수익/손실: $${totalProfit.toFixed(6)}`);
+            // console.log(`  - 총 수수료: $${totalFee.toFixed(6)}`);
+            // console.log(`  - 순 수익/손실: $${netProfit.toFixed(6)}`);
+            // console.log(`  - 총 수익률: ${totalProfitPercent.toFixed(4)}%`);
+            // console.log(`  - 순 수익률: ${netProfitPercent.toFixed(4)}%`);
 
             // 결과 표시
             if (netProfit > 0) {
@@ -618,6 +504,29 @@ export class PositionManager {
             console.log(`  - Gate.io 가격 변동: ${priceChangeGateio.toFixed(4)}%`);
             console.log(`  - 가격차이율 변화: ${((currentOrderlyPrice - currentGateioPrice) / currentGateioPrice * 100 - (entryOrderlyPrice - entryGateioPrice) / entryGateioPrice * 100).toFixed(4)}%`);
 
+            // 텔레그램 알림 전송
+            const side = entryOrderlyPrice > entryGateioPrice ? 'long' : 'short';
+            const closePrice = entryOrderlyHigher ? currentOrderlyPrice : currentGateioPrice;
+
+            // 실제 잔액 조회 (이미 조회된 값 사용)
+            const actualOrderlyBalance = undefined; // 텔레그램 서비스에서 새로 조회
+            const actualGateioBalance = undefined; // 텔레그램 서비스에서 새로 조회
+
+            await this.telegramService.sendPositionExitNotificationWithDetails(
+                symbol,
+                side,
+                positionQuantity,
+                currentOrderlyPrice,
+                currentGateioPrice,
+                {
+                    orderlyPrice: entryOrderlyPrice,
+                    gateioPrice: entryGateioPrice
+                },
+                netProfit,
+                actualOrderlyBalance,
+                actualGateioBalance
+            );
+
         } catch (error) {
             console.error(`수익률 계산 중 오류: ${error}`);
         }
@@ -630,7 +539,8 @@ export class PositionManager {
         orderlyAuth: { accountId: string; secretKey: Uint8Array },
         gateioData: any[],
         endTime: Date,
-        isRunning: boolean
+        isRunning: boolean,
+        targetProfitPercent: number = 0.05
     ): Promise<void> {
         console.log('\n=== 포지션 모니터링 시작 ===');
         let positionClosed = false;
@@ -653,7 +563,7 @@ export class PositionManager {
                 for (const position of activePositions) {
                     const currentPriceDiff = this.getPositionEntryPrice(position.symbol);
                     if (currentPriceDiff) {
-                        await this.checkPositionForClose(position, currentPriceDiff, gateioData, orderlyAuth);
+                        await this.checkPositionForClose(position, currentPriceDiff, gateioData, orderlyAuth, targetProfitPercent);
                     }
                 }
 
@@ -702,15 +612,25 @@ export class PositionManager {
                 // 현재 가격차이율 계산
                 const currentPriceDiffPercent = Math.abs(currentOrderlyPrice - currentGateioPrice) / currentGateioPrice * 100;
                 const entryPriceDiffPercent = Math.abs(entryPrice.orderlyPrice - entryPrice.gateioPrice) / entryPrice.gateioPrice * 100;
+                const achievedProfit = entryPriceDiffPercent - currentPriceDiffPercent;
+                const targetProfitPercent = 0.05; // 목표 수익률 (기본값)
 
                 console.log(`  📊 ${position.symbol}:`);
                 console.log(`    진입 시 - Orderly: ${entryPrice.orderlyPrice.toFixed(6)}, Gate.io: ${entryPrice.gateioPrice.toFixed(6)} (차이: ${entryPriceDiffPercent.toFixed(4)}%)`);
                 console.log(`    현재 - Orderly: ${currentOrderlyPrice.toFixed(6)}, Gate.io: ${currentGateioPrice.toFixed(6)} (차이: ${currentPriceDiffPercent.toFixed(4)}%)`);
                 console.log(`    포지션: ${position.position_qty} (${position.position_qty > 0 ? '롱' : '숏'})`);
-                console.log(`    가격차이율 반전: ${entryOrderlyHigher !== currentOrderlyHigher ? '⚠️ 반전됨' : '🟢 유지'}`);
+                console.log(`    달성한 수익률: ${achievedProfit.toFixed(4)}% (목표: ${targetProfitPercent}%)`);
+                console.log(`    목표 달성: ${achievedProfit >= targetProfitPercent ? '💰 달성' : '🟢 진행중'}`);
             } else {
                 console.log(`  📊 ${position.symbol}: Gate.io 가격 조회 실패`);
             }
         }
     }
+
+
+
+
+
+
+
 } 
